@@ -23,7 +23,7 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
+      - "8001:8001"
     environment:
       - DB_NAME=unfv_horarios
       - DB_USER=postgres
