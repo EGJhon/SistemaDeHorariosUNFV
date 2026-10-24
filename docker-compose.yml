@@ -19,7 +19,7 @@ services:
   web:
     build: .
     container_name: unfv_horarios_web
-    command: python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8001
     volumes:
       - .:/app
     ports:
