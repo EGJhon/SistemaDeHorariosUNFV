@@ -46,7 +46,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://web:8000
+      - VITE_API_URL=http://web:8001
     depends_on:
       - web
 
