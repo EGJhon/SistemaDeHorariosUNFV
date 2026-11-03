@@ -213,7 +213,7 @@ export default function DocenteDashboard() {
         <div className="card-header">
           <div className="card-title">
             <UserCheck className="text-warning" size={22} />
-            <span>Regla 7: Bloques de Horario Libres Pendientes de Elección</span>
+            <span>Bloques de Horario Libres Pendientes de Elección</span>
           </div>
           <span className="badge badge-warning">{unassignedBlocks.length} Disponibles</span>
         </div>
@@ -256,7 +256,7 @@ export default function DocenteDashboard() {
                   onClick={() => handleClaimBlock(b.id_bloque)}
                 >
                   <UserCheck size={16} />
-                  <span>Tomar este Bloque (Regla 7)</span>
+                  <span>Tomar este Bloque </span>
                 </button>
               </div>
             ))}

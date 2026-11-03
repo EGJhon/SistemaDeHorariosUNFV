@@ -29,7 +29,7 @@ export default function AsignarDocenteModal({ bloque, docentes = [], onClose, on
         <div className="modal-header">
           <h3 className="card-title" style={{ margin: 0 }}>
             <UserCheck className="text-primary" size={20} />
-            Regla 7: Elección de Bloque por Docente
+            Elección de Bloque por Docente
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={20} />

@@ -166,7 +166,7 @@ export default function MatriculaEstudianteView({ currentUser }) {
         <div className="card-header">
           <div className="card-title">
             <UserCheck className="text-primary" size={22} />
-            <span>Reglas 1 - 5: Matrícula e Horario Individual del Estudiante</span>
+            <span> Matrícula e Horario Individual del Estudiante</span>
           </div>
 
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -234,7 +234,7 @@ export default function MatriculaEstudianteView({ currentUser }) {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
             <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-              Créditos Seleccionados (Regla 5):
+              Créditos Seleccionados:
             </span>
             <span style={{ fontWeight: 700, fontSize: '1rem', color: totalCreditos > maxCreditos ? 'var(--danger)' : 'var(--primary-light)' }}>
               {totalCreditos} / {maxCreditos} Créditos

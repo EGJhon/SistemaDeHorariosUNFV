@@ -41,7 +41,7 @@ export default function CrearBloqueModal({ grupos = [], aulas = [], onClose, onS
         <div className="modal-header">
           <h3 className="card-title" style={{ margin: 0 }}>
             <PlusCircle className="text-primary" size={20} />
-            Regla 6: Crear Bloque de Horario General
+            Crear Bloque de Horario General
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={20} />
@@ -115,7 +115,7 @@ export default function CrearBloqueModal({ grupos = [], aulas = [], onClose, onS
             </div>
 
             <div className="badge badge-info" style={{ padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-md)' }}>
-              Nota: El bloque nace sin docente asignado (`id_docente = null`), según la Regla 6.
+              Nota: El bloque nace sin docente asignado (`id_docente = null`).
             </div>
           </div>
 

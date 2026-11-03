@@ -104,12 +104,12 @@ export default function HorarioGeneralView() {
         <div className="card-header">
           <div className="card-title">
             <BookOpen className="text-primary" size={22} />
-            <span>Regla 8: Oferta Institucional del Horario General UNFV</span>
+            <span> Oferta Institucional del Horario General UNFV</span>
           </div>
 
           <button className="btn btn-primary" onClick={() => setShowCrearBloque(true)}>
             <PlusCircle size={18} />
-            <span>Añadir Bloque General (Regla 6)</span>
+            <span>Añadir Bloque General </span>
           </button>
         </div>
 
