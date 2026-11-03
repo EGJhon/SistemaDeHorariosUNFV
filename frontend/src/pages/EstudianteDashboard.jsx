@@ -13,7 +13,7 @@ export default function EstudianteDashboard() {
             Portal de Matrícula del Estudiante
           </h2>
           <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Bienvenido(a), <strong>{currentUser?.nombre || 'Estudiante'}</strong>. Inscríbete en asignaturas respetando prerrequisitos, cruces de horario y límites de créditos (Reglas 1-5).
+            Bienvenido(a), <strong>{currentUser?.nombre || 'Estudiante'}</strong>. Inscríbete en asignaturas respetando prerrequisitos, cruces de horario y límites de créditos.
           </p>
         </div>
       </div>

@@ -100,7 +100,7 @@ export default function DocenteDashboard() {
             Portal de Carga Lectiva del Docente
           </h2>
           <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Bienvenido(a), <strong>{docenteNombre}</strong>. Consulta tu horario asignado y toma bloques de horario disponibles (**Regla 7**).
+            Bienvenido(a), <strong>{docenteNombre}</strong>. Consulta tu horario asignado y toma bloques de horario disponibles.
           </p>
         </div>
 
@@ -161,7 +161,7 @@ export default function DocenteDashboard() {
 
         {myAssignedBlocks.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-            Aún no tienes bloques de clase asignados en el periodo {selectedPeriodo}. Puedes elegir bloques libres de la lista inferior (Regla 7).
+            Aún no tienes bloques de clase asignados en el periodo {selectedPeriodo}. Puedes elegir bloques libres de la lista inferior.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
