@@ -47,6 +47,16 @@ Ejecutar el suite de pruebas unitarias y de concurrencia que verifica las 8 regl
 docker compose exec web pytest
 ```
 
+### 3.1. Cargar la malla de prueba 2019 (para probar el selector por plan de estudios)
+
+Sin borrar la malla 2021 existente:
+
+```bash
+docker compose exec web python manage.py seed_malla_2019
+```
+
+Esto crea 31 asignaturas con códigos `19-...`, sus prerrequisitos, grupos y bloques horarios para `2026-1` y `2026-2`, además del estudiante de prueba `2019000001` / `estudiante123`.
+
 Para crear un superusuario y acceder a `http://localhost:8000/admin/`:
 
 ```bash
@@ -57,6 +67,7 @@ docker compose exec web python manage.py createsuperuser
 
 ## 📋 Reglas de Negocio Implementadas
 
+0. **Pertenencia a la Malla Curricular**: Cada `asignatura` y `estudiante` tiene un campo `malla` (por defecto `2021`). Un estudiante solo puede matricularse en asignaturas que pertenezcan a su misma malla, y la malla curricular, la oferta habilitada y el horario general se filtran automáticamente por dicha malla.
 1. **Unicidad de Selección**: Un estudiante no puede seleccionar dos grupos activos de la misma asignatura en un mismo periodo. Si cancela (`anulada`), se permite re-seleccionar.
 2. **Cruce de Horario del Estudiante**: Valida que ningún bloque del nuevo grupo tenga traslape de horario con los grupos activos previamente seleccionados.
 3. **Cupo del Grupo**: Valida `cupos_ocupados < vacantes` e incrementa de forma atómica mediante `select_for_update()`.
@@ -76,5 +87,7 @@ docker compose exec web python manage.py createsuperuser
 | `POST` | `/api/selecciones/{id}/anular/` | Anular selección y liberar cupo de forma idempotente. |
 | `POST` | `/api/bloques-horario/` | Regla 6: Crear bloque general sin docente. |
 | `PATCH` | `/api/bloques-horario/{id}/asignar-docente/` | Regla 7: Docente elige/reclama bloque de horario. |
-| `GET` | `/api/horario-general/?periodo=&ciclo=` | Regla 8: Consultar oferta de horario agrupada. |
+| `GET` | `/api/horario-general/?periodo=&ciclo=&malla=` | Regla 8: Consultar oferta de horario agrupada por malla, ciclo y periodo. |
+| `GET` | `/api/asignaturas/mallas/` | Listar los planes de estudio (mallas) registrados. |
+| `GET` | `/api/asignaturas/?malla=` | Listar asignaturas de una malla específica. |
 | `GET` | `/api/docs/` | Swagger UI interactivo. |

@@ -243,6 +243,9 @@ export default function GestionUsuariosView() {
                           <span className="badge badge-secondary" style={{ marginLeft: '0.5rem' }}>
                             Ciclo {u.ciclo_actual || 'I'}
                           </span>
+                          <span className="badge badge-info" style={{ marginLeft: '0.35rem' }}>
+                            Malla {u.malla || '2021'}
+                          </span>
                         </div>
                       ) : u.rol === 'DOCENTE' ? (
                         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Docente Activo EPIS</div>

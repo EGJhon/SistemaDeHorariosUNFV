@@ -4,8 +4,12 @@ import { api } from '../../api';
 
 const DAYS = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
 
-export default function CrearBloqueModal({ grupos = [], aulas = [], onClose, onSuccess }) {
-  const [grupoId, setGrupoId] = useState(grupos[0]?.id || '');
+export default function CrearBloqueModal({ grupos = [], aulas = [], malla = '', onClose, onSuccess }) {
+  const gruposMalla = malla
+    ? grupos.filter((g) => !g.asignatura_malla || String(g.asignatura_malla) === String(malla))
+    : grupos;
+
+  const [grupoId, setGrupoId] = useState(gruposMalla[0]?.id || '');
   const [diaSemana, setDiaSemana] = useState('LUNES');
   const [horaInicio, setHoraInicio] = useState('08:00');
   const [horaFin, setHoraFin] = useState('09:40');
@@ -25,6 +29,7 @@ export default function CrearBloqueModal({ grupos = [], aulas = [], onClose, onS
         hora_inicio: horaInicio.length === 5 ? `${horaInicio}:00` : horaInicio,
         hora_fin: horaFin.length === 5 ? `${horaFin}:00` : horaFin,
         id_aula: parseInt(aulaId, 10),
+        malla,
       });
       onSuccess();
       onClose();
@@ -60,12 +65,18 @@ export default function CrearBloqueModal({ grupos = [], aulas = [], onClose, onS
             <div className="form-group">
               <label className="form-label">Grupo / Asignatura</label>
               <select className="select-input" value={grupoId} onChange={(e) => setGrupoId(e.target.value)} required>
-                {grupos.map((g) => (
+                {gruposMalla.length === 0 && <option value="">Sin grupos para la malla/periodo seleccionado</option>}
+                {gruposMalla.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.codigo} — Sec {g.seccion} ({g.turno})
+                    {g.codigo} — Sec {g.seccion} ({g.turno}) · {g.periodo_nombre || ''}
                   </option>
                 ))}
               </select>
+              {malla && (
+                <span className="badge badge-info" style={{ marginTop: '0.35rem', alignSelf: 'flex-start' }}>
+                  Mostrando solo asignaturas de la Malla {malla}
+                </span>
+              )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
@@ -123,7 +134,7 @@ export default function CrearBloqueModal({ grupos = [], aulas = [], onClose, onS
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={loading}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
+            <button type="submit" className="btn btn-primary" disabled={loading || !grupoId}>
               {loading ? 'Guardando...' : 'Crear Bloque'}
             </button>
           </div>

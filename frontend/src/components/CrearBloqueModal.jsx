@@ -60,9 +60,10 @@ export default function CrearBloqueModal({ grupos = [], aulas = [], onClose, onS
             <div className="form-group">
               <label className="form-label">Grupo / Asignatura</label>
               <select className="select-input" value={grupoId} onChange={(e) => setGrupoId(e.target.value)} required>
+                {grupos.length === 0 && <option value="">Sin grupos para la malla/periodo seleccionado</option>}
                 {grupos.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.codigo} — Sec {g.seccion} ({g.turno})
+                    {g.codigo} — Sec {g.seccion} ({g.turno}) · {g.periodo_nombre || ''}
                   </option>
                 ))}
               </select>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserCheck, Calendar, AlertCircle, BookOpen, Clock, CheckCircle } from 'lucide-react';
+import { UserCheck, Calendar, AlertCircle, BookOpen, Clock, CheckCircle, Award, TrendingUp } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import TimetableGrid from '../components/timetable/TimetableGrid';
@@ -48,12 +48,23 @@ export default function DocenteDashboard() {
   const docenteId = currentUser?.docente_id;
   const docenteNombre = currentUser?.nombres || currentUser?.nombre || 'Docente';
 
+  // Calculation of teaching hours
+  const calculateBlockMinutes = (horaIni, horaFin) => {
+    if (!horaIni || !horaFin) return 100;
+    const [h1, m1] = horaIni.split(':').map(Number);
+    const [h2, m2] = horaFin.split(':').map(Number);
+    return Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1));
+  };
+
   // My assigned blocks and unassigned blocks
   const myAssignedBlocks = [];
   const unassignedBlocks = [];
 
   horarioGeneral.forEach((item) => {
     item.bloques.forEach((b) => {
+      const minutos = calculateBlockMinutes(b.hora_inicio, b.hora_fin);
+      const horasAcademicas = Math.round(minutos / 50);
+
       const blockItem = {
         ...b,
         codigo_asignatura: item.codigo_asignatura,
@@ -62,6 +73,8 @@ export default function DocenteDashboard() {
         turno: item.turno,
         ciclo: item.ciclo,
         grupo_id: item.grupo_id,
+        minutos,
+        horasAcademicas,
       };
 
       const isMyBlock =
@@ -75,6 +88,15 @@ export default function DocenteDashboard() {
       }
     });
   });
+
+  // Aggregated teaching metrics
+  const totalMinutosDictado = myAssignedBlocks.reduce((acc, b) => acc + b.minutos, 0);
+  const totalHorasAcademicas = Math.round(totalMinutosDictado / 50); // 1 hora pedagógica = 50 min
+  const totalHorasCronologicas = (totalMinutosDictado / 60).toFixed(1); // 1 hora reloj = 60 min
+  const cursosDictados = new Set(myAssignedBlocks.map((b) => b.codigo_asignatura)).size;
+
+  const targetHorasSemanales = 20; // Carga semanal estándar UNFV
+  const cargaPercentage = Math.min(100, Math.round((totalHorasAcademicas / targetHorasSemanales) * 100));
 
   const handleClaimBlock = async (bloqueId) => {
     setAlert(null);
@@ -94,13 +116,13 @@ export default function DocenteDashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800 }}>
             Portal de Carga Lectiva del Docente
           </h2>
           <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Bienvenido(a), <strong>{docenteNombre}</strong>. Consulta tu horario asignado y toma bloques de horario disponibles.
+            Bienvenido(a), <strong>{docenteNombre}</strong>. Consulta tus horas de dictado asignadas y selecciona bloques de horario disponibles.
           </p>
         </div>
 
@@ -129,23 +151,72 @@ export default function DocenteDashboard() {
         />
       )}
 
-      {/* Summary Metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--success)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Mi Carga Horaria Asignada
+      {/* Teaching Hours and Summary Metrics Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+        {/* Card 1: Horas de Dictado Semanal */}
+        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--primary-light)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>
+            <Clock size={16} className="text-primary" />
+            <span>Horas de Dictado Semanal</span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--success)', marginTop: '0.2rem' }}>
-            {myAssignedBlocks.length} Bloques de Clase
+          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--primary-light)', marginTop: '0.35rem' }}>
+            {totalHorasAcademicas} <span style={{ fontSize: '1rem', color: 'var(--text-dim)', fontWeight: 600 }}>h.a.</span>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            {totalHorasCronologicas} hrs. reloj ({totalMinutosDictado} min / semana)
           </div>
         </div>
 
-        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--warning)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Bloques Disponibles (Sin Docente)
+        {/* Card 2: Bloques de Clase Asignados */}
+        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--success)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>
+            <BookOpen size={16} className="text-success" />
+            <span>Bloques de Clase</span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--warning)', marginTop: '0.2rem' }}>
-            {unassignedBlocks.length} Bloques
+          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--success)', marginTop: '0.35rem' }}>
+            {myAssignedBlocks.length} <span style={{ fontSize: '1rem', color: 'var(--text-dim)', fontWeight: 600 }}>bloques</span>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            Distribuidos en {cursosDictados} {cursosDictados === 1 ? 'asignatura' : 'asignaturas'}
+          </div>
+        </div>
+
+        {/* Card 3: Estado de Carga Lectiva */}
+        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #f59e0b' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>
+            <TrendingUp size={16} style={{ color: '#f59e0b' }} />
+            <span>Avance Carga Lectiva (Top 20h)</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '0.35rem' }}>
+            <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f59e0b' }}>
+              {cargaPercentage}%
+            </span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {totalHorasAcademicas} / {targetHorasSemanales} hrs
+            </span>
+          </div>
+          <div className="credit-progress-bar" style={{ marginTop: '0.4rem', height: '6px' }}>
+            <div
+              className="credit-progress-fill"
+              style={{
+                width: `${cargaPercentage}%`,
+                backgroundColor: totalHorasAcademicas > 20 ? 'var(--danger)' : '#f59e0b',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Card 4: Bloques Libres en Facultad */}
+        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>
+            <UserCheck size={16} className="text-muted" />
+            <span>Bloques Libres en Facultad</span>
+          </div>
+          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '0.35rem' }}>
+            {unassignedBlocks.length} <span style={{ fontSize: '1rem', color: 'var(--text-dim)', fontWeight: 600 }}>libres</span>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            Pendientes de asignación en {selectedPeriodo}
           </div>
         </div>
       </div>
@@ -155,8 +226,9 @@ export default function DocenteDashboard() {
         <div className="card-header">
           <div className="card-title">
             <Calendar className="text-primary" size={22} />
-            <span>Mi Horario Semanal de Clases ({myAssignedBlocks.length} Bloques Asignados)</span>
+            <span>Mi Horario Semanal de Clases ({totalHorasAcademicas} Horas Académicas Dictadas)</span>
           </div>
+          <span className="badge badge-success">{myAssignedBlocks.length} Bloques Asignados</span>
         </div>
 
         {myAssignedBlocks.length === 0 ? (

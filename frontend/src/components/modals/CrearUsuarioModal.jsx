@@ -13,6 +13,7 @@ export default function CrearUsuarioModal({ onClose, onSuccess }) {
   const [rol, setRol] = useState('ESTUDIANTE');
   const [codigoUni, setCodigoUni] = useState('');
   const [cicloActual, setCicloActual] = useState('I');
+  const [malla, setMalla] = useState('2021');
 
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -32,6 +33,7 @@ export default function CrearUsuarioModal({ onClose, onSuccess }) {
         rol,
         codigo_universitario: codigoUni || username,
         ciclo_actual: cicloActual,
+        malla,
       });
       onSuccess();
       onClose();
@@ -159,6 +161,17 @@ export default function CrearUsuarioModal({ onClose, onSuccess }) {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Malla Curricular</label>
+                  <input
+                    type="text"
+                    className="text-input"
+                    placeholder="ej. 2021"
+                    value={malla}
+                    onChange={(e) => setMalla(e.target.value)}
+                  />
                 </div>
               </div>
             )}

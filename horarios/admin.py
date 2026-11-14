@@ -31,8 +31,8 @@ class PeriodoAcademicoAdmin(admin.ModelAdmin):
 
 @admin.register(asignatura)
 class AsignaturaAdmin(admin.ModelAdmin):
-    list_display = ('codigo', 'nombre', 'creditos', 'horas_teoria', 'horas_practica', 'ciclo')
-    list_filter = ('ciclo',)
+    list_display = ('codigo', 'nombre', 'creditos', 'horas_teoria', 'horas_practica', 'ciclo', 'malla')
+    list_filter = ('ciclo', 'malla')
     search_fields = ('codigo', 'nombre')
 
 
@@ -71,8 +71,8 @@ class DisponibilidadAulaAdmin(admin.ModelAdmin):
 
 @admin.register(estudiante)
 class EstudianteAdmin(admin.ModelAdmin):
-    list_display = ('id', 'codigo_universitario', 'nombres', 'ciclo_actual', 'usuario')
-    list_filter = ('ciclo_actual',)
+    list_display = ('id', 'codigo_universitario', 'nombres', 'ciclo_actual', 'malla', 'usuario')
+    list_filter = ('ciclo_actual', 'malla')
     search_fields = ('codigo_universitario', 'nombres', 'usuario__username')
 
 

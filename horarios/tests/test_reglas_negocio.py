@@ -411,6 +411,40 @@ def test_regla_6_creacion_horario_general_sin_docente(client, base_data):
 
 
 # ============================================================================
+# REGLA 6.1: El bloque debe pertenecer a la malla seleccionada
+# ============================================================================
+@pytest.mark.django_db
+def test_regla_6_1_bloque_solo_permite_asignaturas_de_la_malla(client, base_data):
+    """
+    Al crear un bloque indicando la malla, el grupo/asignatura debe pertenecer a esa malla.
+    """
+    url = reverse('bloque-horario-list')
+    grp = base_data["grp1"]
+    asig = grp.codigo
+
+    # La asignatura pasa a pertenecer a la malla 2019
+    asig.malla = "2019"
+    asig.save()
+
+    payload_base = {
+        "id_grupo": grp.id,
+        "dia_semana": "MIERCOLES",
+        "hora_inicio": "08:00:00",
+        "hora_fin": "10:00:00",
+        "id_aula": base_data["aula1"].id,
+    }
+
+    # Intento con una malla distinta -> Falla 400
+    res_fail = client.post(url, {**payload_base, "malla": "2021"}, format='json')
+    assert res_fail.status_code == status.HTTP_400_BAD_REQUEST
+    assert "malla" in str(res_fail.data).lower()
+
+    # Intento con la malla correcta -> Éxito
+    res_ok = client.post(url, {**payload_base, "malla": "2019"}, format='json')
+    assert res_ok.status_code == status.HTTP_201_CREATED
+
+
+# ============================================================================
 # REGLA 7: Elección de bloque por el docente
 # ============================================================================
 @pytest.mark.django_db
@@ -519,6 +553,28 @@ def test_anulacion_idempotente_y_liberacion(client, base_data):
     # 4. Verificar que tras anular, Grupo 2 (que se traslapaba con Grupo 1 el Lunes) AHORA SÍ pueda ser seleccionado
     res_grupo2 = client.post(url_sel, {"id_estudiante": base_data["est1"].id, "id_grupo": base_data["grp2"].id}, format='json')
     assert res_grupo2.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.django_db
+def test_regla_0_asignatura_debe_pertenecer_a_malla_estudiante(client, base_data):
+    """
+    Un estudiante solo puede matricularse en asignaturas de su misma malla curricular.
+    """
+    url = reverse('seleccion-list')
+
+    # La malla por defecto de la fixture es 2021 en ambos; cambiar la asignatura a otra malla
+    base_data["asig1"].malla = "2018"
+    base_data["asig1"].save()
+
+    res = client.post(url, {"id_estudiante": base_data["est1"].id, "id_grupo": base_data["grp1"].id}, format='json')
+    assert res.status_code == status.HTTP_400_BAD_REQUEST
+    assert "malla" in str(res.data).lower()
+
+    # Restaurar la malla y verificar que la matrícula procede
+    base_data["asig1"].malla = "2021"
+    base_data["asig1"].save()
+    res_ok = client.post(url, {"id_estudiante": base_data["est1"].id, "id_grupo": base_data["grp1"].id}, format='json')
+    assert res_ok.status_code == status.HTTP_201_CREATED
 
 
 @pytest.mark.django_db(transaction=True)

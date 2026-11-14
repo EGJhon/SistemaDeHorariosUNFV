@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
@@ -27,10 +28,12 @@ from .serializers import (
     GrupoSerializer,
     BloqueHorarioCreateSerializer,
     BloqueHorarioSerializer,
+    BloqueHorarioUpdateSerializer,
     AsignarDocenteSerializer,
     SeleccionCreateSerializer,
     SeleccionSerializer,
     EstudianteSerializer,
+    HistorialAcademicoSerializer,
     UsuarioListSerializer,
     UsuarioCreateSerializer,
 )
@@ -38,8 +41,13 @@ from .services import (
     crear_seleccion,
     anular_seleccion,
     crear_bloque_horario,
+    modificar_bloque_horario,
+    eliminar_bloque_horario,
     asignar_docente_bloque,
     obtener_horario_general,
+    obtener_historial_estudiante,
+    obtener_estado_malla_estudiante,
+    obtener_oferta_habilitada_estudiante,
 )
 
 
@@ -75,6 +83,8 @@ class LoginView(APIView):
         docente_id = getattr(getattr(user, 'docente_profile', None), 'id', None)
         estudiante_id = getattr(getattr(user, 'estudiante_profile', None), 'id', None)
 
+        token, _ = Token.objects.get_or_create(user=user)
+
         return Response({
             "id": user.id,
             "username": user.username,
@@ -82,6 +92,7 @@ class LoginView(APIView):
             "nombres": user.get_full_name() or user.username,
             "rol": perfil.rol,
             "rol_display": perfil.get_rol_display(),
+            "token": token.key,
             "docente_id": docente_id,
             "estudiante_id": estudiante_id,
         }, status=status.HTTP_200_OK)
@@ -138,6 +149,8 @@ class BloqueHorarioViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'create':
             return BloqueHorarioCreateSerializer
+        if self.action in ['update', 'partial_update']:
+            return BloqueHorarioUpdateSerializer
         if self.action == 'asignar_docente':
             return AsignarDocenteSerializer
         return BloqueHorarioSerializer
@@ -157,10 +170,46 @@ class BloqueHorarioViewSet(viewsets.ModelViewSet):
             dia_semana=serializer.validated_data['dia_semana'],
             hora_inicio=serializer.validated_data['hora_inicio'],
             hora_fin=serializer.validated_data['hora_fin'],
-            aula_id=serializer.validated_data['id_aula'].id
+            aula_id=serializer.validated_data['id_aula'].id,
+            malla=serializer.validated_data.get('malla')
         )
         output_serializer = BloqueHorarioSerializer(bloque)
         return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        request=BloqueHorarioUpdateSerializer,
+        responses={200: BloqueHorarioSerializer, 400: OpenApiTypes.OBJECT},
+        summary="Modificar bloque de horario (Consejo de Facultad / Admin)",
+        description="Permite modificar día, horario, aula y/o docente con validación de traslapes en aula y carga docente."
+    )
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        serializer = BloqueHorarioUpdateSerializer(data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        bloque_actualizado = modificar_bloque_horario(
+            bloque_id=kwargs.get('pk'),
+            dia_semana=serializer.validated_data.get('dia_semana'),
+            hora_inicio=serializer.validated_data.get('hora_inicio'),
+            hora_fin=serializer.validated_data.get('hora_fin'),
+            aula_id=serializer.validated_data.get('id_aula'),
+            docente_id=serializer.validated_data.get('id_docente'),
+            desasignar_docente=serializer.validated_data.get('desasignar_docente', False),
+        )
+        output_serializer = BloqueHorarioSerializer(bloque_actualizado)
+        return Response(output_serializer.data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Eliminar bloque de horario",
+        description="Elimina un bloque de horario existente de forma atómica."
+    )
+    def destroy(self, request, *args, **kwargs):
+        eliminar_bloque_horario(bloque_id=kwargs.get('pk'))
+        return Response({"message": "Bloque horario eliminado exitosamente."}, status=status.HTTP_200_OK)
 
     @extend_schema(
         request=AsignarDocenteSerializer,
@@ -189,6 +238,7 @@ class HorarioGeneralView(APIView):
         parameters=[
             OpenApiParameter(name='periodo', description='ID del Periodo Académico', required=True, type=OpenApiTypes.INT),
             OpenApiParameter(name='ciclo', description='Ciclo de la asignatura (ej. II, IV, VI, VIII, X)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='malla', description='Malla curricular (ej. 2021)', required=False, type=OpenApiTypes.STR),
         ],
         responses={200: OpenApiTypes.OBJECT},
         summary="Consultar horario general agrupado",
@@ -197,6 +247,7 @@ class HorarioGeneralView(APIView):
     def get(self, request, *args, **kwargs):
         periodo_id = request.query_params.get('periodo')
         ciclo = request.query_params.get('ciclo')
+        malla = request.query_params.get('malla')
 
         if not periodo_id:
             return Response(
@@ -212,7 +263,7 @@ class HorarioGeneralView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        horario_agrupado = obtener_horario_general(periodo_id=periodo_id, ciclo=ciclo)
+        horario_agrupado = obtener_horario_general(periodo_id=periodo_id, ciclo=ciclo, malla=malla)
         return Response(horario_agrupado, status=status.HTTP_200_OK)
 
 
@@ -226,10 +277,61 @@ class AsignaturaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = asignatura.objects.all()
     serializer_class = AsignaturaSerializer
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        malla = self.request.query_params.get('malla')
+        if malla:
+            qs = qs.filter(malla=malla)
+        return qs
+
+    @extend_schema(
+        summary="Listar planes de estudio (mallas) disponibles",
+        description="Retorna la lista de mallas curriculares registradas en las asignaturas.",
+    )
+    @action(detail=False, methods=['get'], url_path='mallas')
+    def mallas(self, request):
+        mallas = (
+            asignatura.objects.values_list('malla', flat=True)
+            .distinct()
+            .order_by('malla')
+        )
+        return Response(list(mallas), status=status.HTTP_200_OK)
+
 
 class DocenteViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = docente.objects.all()
+    queryset = docente.objects.all().prefetch_related('bloques')
     serializer_class = DocenteSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='periodo', description='ID del Periodo Académico', required=False, type=OpenApiTypes.INT),
+        ],
+        summary="Carga lectiva y horas de dictado del docente",
+        description="Retorna el desglose de horas académicas y bloques asignados al docente."
+    )
+    @action(detail=True, methods=['get'], url_path='carga-lectiva')
+    def carga_lectiva(self, request, pk=None):
+        doc = self.get_object()
+        periodo_id = request.query_params.get('periodo')
+        bloques = doc.bloques.all().select_related('id_grupo', 'id_grupo__codigo', 'id_aula')
+        if periodo_id:
+            bloques = bloques.filter(id_grupo__id_periodo_id=periodo_id)
+
+        total_minutos = sum(
+            (b.hora_fin.hour * 60 + b.hora_fin.minute) - (b.hora_inicio.hour * 60 + b.hora_inicio.minute)
+            for b in bloques
+        )
+        horas_pedagogicas = round(total_minutos / 50)
+        horas_cronologicas = round(total_minutos / 60, 1)
+
+        return Response({
+            "docente_id": doc.id,
+            "docente_nombre": doc.nombre,
+            "total_bloques": bloques.count(),
+            "total_horas_pedagogicas": horas_pedagogicas,
+            "total_horas_cronologicas": horas_cronologicas,
+            "total_minutos": total_minutos,
+        }, status=status.HTTP_200_OK)
 
 
 class AulaViewSet(viewsets.ReadOnlyModelViewSet):
@@ -245,6 +347,45 @@ class GrupoViewSet(viewsets.ReadOnlyModelViewSet):
 class EstudianteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = estudiante.objects.all()
     serializer_class = EstudianteSerializer
+
+    @extend_schema(
+        summary="Historial académico de notas del estudiante",
+        description="Retorna el listado de asignaturas cursadas, notas obtenidas y estado de aprobación."
+    )
+    @action(detail=True, methods=['get'], url_path='historial')
+    def historial(self, request, pk=None):
+        registros = obtener_historial_estudiante(estudiante_id=pk)
+        serializer = HistorialAcademicoSerializer(registros, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Malla curricular y dependencias para el estudiante",
+        description="Retorna la malla curricular completa con dependencias y el estado actual del estudiante (aprobado, habilitado, bloqueado, matriculado)."
+    )
+    @action(detail=True, methods=['get'], url_path='malla-curricular')
+    def malla_curricular(self, request, pk=None):
+        malla = obtener_estado_malla_estudiante(estudiante_id=pk)
+        return Response(malla, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='periodo', description='ID del Periodo Académico', required=True, type=OpenApiTypes.INT),
+        ],
+        summary="Oferta horaria filtrada por prerrequisitos cumplidos",
+        description="Retorna la oferta horaria del periodo evaluando para cada grupo si el estudiante cumple los prerrequisitos requeridos."
+    )
+    @action(detail=True, methods=['get'], url_path='oferta-habilitada')
+    def oferta_habilitada(self, request, pk=None):
+        periodo_id = request.query_params.get('periodo')
+        if not periodo_id:
+            return Response({"error": "El parámetro 'periodo' es obligatorio."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periodo_id = int(periodo_id)
+        except ValueError:
+            return Response({"error": "El parámetro 'periodo' debe ser un número entero."}, status=status.HTTP_400_BAD_REQUEST)
+
+        oferta = obtener_oferta_habilitada_estudiante(estudiante_id=pk, periodo_id=periodo_id)
+        return Response(oferta, status=status.HTTP_200_OK)
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):
@@ -272,6 +413,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         rol = serializer.validated_data.get('rol', 'ESTUDIANTE')
         codigo_uni = serializer.validated_data.get('codigo_universitario', '') or username
         ciclo = serializer.validated_data.get('ciclo_actual', 'I')
+        malla = serializer.validated_data.get('malla', '2021') or '2021'
 
         if User.objects.filter(username=username).exists():
             return Response(
@@ -303,6 +445,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 defaults={
                     'nombres': nombres_completos,
                     'ciclo_actual': ciclo,
+                    'malla': malla,
                     'usuario': user
                 }
             )

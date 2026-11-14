@@ -42,6 +42,7 @@ class asignatura(models.Model):
     horas_teoria = models.IntegerField()
     horas_practica = models.IntegerField()
     ciclo = models.CharField(max_length=10)
+    malla = models.CharField(max_length=50, default='2021')
 
     class Meta:
         db_table = 'asignatura'
@@ -177,6 +178,7 @@ class estudiante(models.Model):
     codigo_universitario = models.CharField(max_length=20, unique=True)
     nombres = models.CharField(max_length=150)
     ciclo_actual = models.CharField(max_length=10)
+    malla = models.CharField(max_length=50, default='2021')
     usuario = models.OneToOneField(
         User,
         on_delete=models.SET_NULL,

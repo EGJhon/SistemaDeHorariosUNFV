@@ -2,6 +2,7 @@ from django.db import transaction, IntegrityError
 from rest_framework.exceptions import ValidationError
 from .models import (
     estudiante,
+    asignatura,
     grupo,
     seleccion,
     bloque_horario,
@@ -11,6 +12,7 @@ from .models import (
     SolicitudAmpliacion,
     docente,
     aula,
+    Periodo_Academico,
 )
 
 
@@ -32,6 +34,13 @@ def crear_seleccion(estudiante_id, grupo_id):
 
         periodo = g.id_periodo
         asig = g.codigo
+
+        # REGLA 0: La asignatura debe pertenecer a la malla curricular del estudiante
+        if asig.malla != est.malla:
+            raise ValidationError(
+                f"La asignatura {asig.codigo} pertenece a la malla {asig.malla}, "
+                f"mientras que el estudiante cursa la malla {est.malla}."
+            )
 
         # REGLA 1: Unicidad de selección activa por asignatura en el mismo periodo
         if seleccion.objects.filter(
@@ -142,16 +151,23 @@ def anular_seleccion(seleccion_id):
         return sel
 
 
-def crear_bloque_horario(grupo_id, dia_semana, hora_inicio, hora_fin, aula_id):
+def crear_bloque_horario(grupo_id, dia_semana, hora_inicio, hora_fin, aula_id, malla=None):
     """
     REGLA 6: Crea un bloque de horario general sin docente (id_docente = null).
     Valida traslapes en el aula y disponibilidad declarada del aula.
+    Si se especifica `malla`, valida que el grupo pertenezca a ese plan de estudios.
     """
     with transaction.atomic():
         try:
             g = grupo.objects.get(pk=grupo_id)
         except grupo.DoesNotExist:
             raise ValidationError({"grupo": "El grupo especificado no existe."})
+
+        if malla and g.codigo.malla != malla:
+            raise ValidationError(
+                f"El grupo seleccionado pertenece a la malla {g.codigo.malla}, "
+                f"no a la malla {malla}."
+            )
 
         try:
             a = aula.objects.get(pk=aula_id)
@@ -241,7 +257,123 @@ def asignar_docente_bloque(bloque_id, docente_id):
         return b
 
 
-def obtener_horario_general(periodo_id, ciclo=None):
+def modificar_bloque_horario(
+    bloque_id,
+    dia_semana=None,
+    hora_inicio=None,
+    hora_fin=None,
+    aula_id=None,
+    docente_id=None,
+    desasignar_docente=False
+):
+    """
+    Modifica un bloque de horario existente:
+    - Valida que el aula no tenga traslapes en el mismo periodo (excluyendo este bloque).
+    - Valida que el horario esté dentro de la disponibilidad del aula si existe.
+    - Valida que el docente asignado no tenga traslapes (excluyendo este bloque).
+    - Permite cambiar día, horario, aula o docente, o desasignar docente.
+    """
+    with transaction.atomic():
+        try:
+            b = bloque_horario.objects.select_for_update().get(pk=bloque_id)
+        except bloque_horario.DoesNotExist:
+            raise ValidationError({"bloque": "El bloque de horario especificado no existe."})
+
+        periodo = b.id_grupo.id_periodo
+
+        nuevo_dia = dia_semana if dia_semana is not None else b.dia_semana
+        nueva_hora_inicio = hora_inicio if hora_inicio is not None else b.hora_inicio
+        nueva_hora_fin = hora_fin if hora_fin is not None else b.hora_fin
+
+        if nueva_hora_inicio >= nueva_hora_fin:
+            raise ValidationError("La hora de inicio debe ser anterior a la hora de fin.")
+
+        nueva_aula = b.id_aula
+        if aula_id is not None:
+            try:
+                nueva_aula = aula.objects.get(pk=aula_id)
+            except aula.DoesNotExist:
+                raise ValidationError({"aula": "El aula especificada no existe."})
+
+        # Validar traslape del aula en el mismo periodo (excluyendo este bloque)
+        traslapes_aula = bloque_horario.objects.filter(
+            id_aula=nueva_aula,
+            dia_semana__iexact=nuevo_dia,
+            id_grupo__id_periodo=periodo
+        ).exclude(pk=b.pk)
+
+        for ta in traslapes_aula:
+            if nueva_hora_inicio < ta.hora_fin and nueva_hora_fin > ta.hora_inicio:
+                raise ValidationError(
+                    f"El aula {nueva_aula.codigo} ya está ocupada el {nuevo_dia} en el rango {ta.hora_inicio}-{ta.hora_fin}."
+                )
+
+        # Validar disponibilidad declarada de aula
+        disps = disponibilidad_aula.objects.filter(
+            id_aula=nueva_aula,
+            id_periodo=periodo,
+            dia_semana__iexact=nuevo_dia
+        )
+        if disps.exists():
+            dentro_de_rango = False
+            for d in disps:
+                if nueva_hora_inicio >= d.hora_inicio and nueva_hora_fin <= d.hora_fin:
+                    dentro_de_rango = True
+                    break
+            if not dentro_de_rango:
+                raise ValidationError(
+                    f"El horario {nueva_hora_inicio}-{nueva_hora_fin} no se encuentra dentro de la disponibilidad declarada del aula."
+                )
+
+        # Manejo del docente
+        nuevo_docente = b.id_docente
+        if desasignar_docente:
+            nuevo_docente = None
+        elif docente_id is not None:
+            try:
+                nuevo_docente = docente.objects.get(pk=docente_id)
+            except docente.DoesNotExist:
+                raise ValidationError({"docente": "El docente especificado no existe."})
+
+        # Si hay docente asignado, validar traslapes de docente
+        if nuevo_docente is not None:
+            traslapes_docente = bloque_horario.objects.filter(
+                id_docente=nuevo_docente,
+                dia_semana__iexact=nuevo_dia,
+                id_grupo__id_periodo=periodo
+            ).exclude(pk=b.pk)
+
+            for td in traslapes_docente:
+                if nueva_hora_inicio < td.hora_fin and nueva_hora_fin > td.hora_inicio:
+                    raise ValidationError(
+                        f"El docente {nuevo_docente.nombre} ya tiene un bloque asignado el {nuevo_dia} "
+                        f"en el rango {td.hora_inicio}-{td.hora_fin} en este periodo."
+                    )
+
+        b.dia_semana = nuevo_dia
+        b.hora_inicio = nueva_hora_inicio
+        b.hora_fin = nueva_hora_fin
+        b.id_aula = nueva_aula
+        b.id_docente = nuevo_docente
+        b.save()
+        return b
+
+
+def eliminar_bloque_horario(bloque_id):
+    """
+    Elimina un bloque de horario de forma atómica.
+    """
+    with transaction.atomic():
+        try:
+            b = bloque_horario.objects.select_for_update().get(pk=bloque_id)
+        except bloque_horario.DoesNotExist:
+            raise ValidationError({"bloque": "El bloque de horario especificado no existe."})
+
+        b.delete()
+        return True
+
+
+def obtener_horario_general(periodo_id, ciclo=None, malla=None):
     """
     REGLA 8: Devuelve los bloques de horario general agrupados por asignatura y grupo.
     """
@@ -250,12 +382,15 @@ def obtener_horario_general(periodo_id, ciclo=None):
     )
     if ciclo:
         qs = qs.filter(id_grupo__codigo__ciclo=ciclo)
+    if malla:
+        qs = qs.filter(id_grupo__codigo__malla=malla)
 
     resultado = {}
     for b in qs:
         asig_code = b.id_grupo.codigo.codigo
         asig_nombre = b.id_grupo.codigo.nombre
         asig_ciclo = b.id_grupo.codigo.ciclo
+        asig_malla = b.id_grupo.codigo.malla
         grupo_id = b.id_grupo.id
         seccion = b.id_grupo.seccion
         turno = b.id_grupo.turno
@@ -269,6 +404,7 @@ def obtener_horario_general(periodo_id, ciclo=None):
                 "codigo_asignatura": asig_code,
                 "nombre_asignatura": asig_nombre,
                 "ciclo": asig_ciclo,
+                "malla": asig_malla,
                 "creditos": cr,
                 "horas_teoria": ht,
                 "horas_practica": hp,
@@ -296,3 +432,166 @@ def obtener_horario_general(periodo_id, ciclo=None):
         })
 
     return list(resultado.values())
+
+
+def obtener_historial_estudiante(estudiante_id):
+    """
+    Retorna los registros de HistorialAcademico del estudiante con notas y detalle de asignatura.
+    """
+    return HistorialAcademico.objects.filter(
+        id_estudiante_id=estudiante_id
+    ).select_related('id_asignatura', 'id_periodo').order_by('id_asignatura__ciclo', 'id_asignatura__codigo')
+
+
+def obtener_estado_malla_estudiante(estudiante_id):
+    """
+    Retorna la malla curricular completa organizada por ciclo, indicando para cada asignatura:
+    - estado: 'aprobado' | 'habilitado' | 'bloqueado' | 'matriculado'
+    - nota: nota obtenida si está aprobada
+    - prerrequisitos: lista de asignaturas requeridas
+    - prerrequisitos_faltantes: prerrequisitos que aún no ha aprobado
+    """
+    try:
+        est = estudiante.objects.get(pk=estudiante_id)
+    except estudiante.DoesNotExist:
+        raise ValidationError({"estudiante": "El estudiante especificado no existe."})
+
+    # Asignaturas aprobadas por el estudiante
+    aprobados_qs = HistorialAcademico.objects.filter(
+        id_estudiante=est,
+        estado='aprobado'
+    ).select_related('id_asignatura', 'id_periodo')
+
+    aprobados_map = {ha.id_asignatura_id: ha for ha in aprobados_qs}
+
+    # Selecciones activas actuales
+    selecciones_activas = set(
+        seleccion.objects.filter(
+            id_estudiante=est,
+            estado__in=['pendiente', 'confirmada']
+        ).values_list('id_asignatura_id', flat=True)
+    )
+
+    # Prerrequisitos de todas las asignaturas
+    prereqs_dict = {}
+    for p in Prerequisitos.objects.all().select_related('asignatura_requisito'):
+        cod = p.asignatura_codigo_id
+        if cod not in prereqs_dict:
+            prereqs_dict[cod] = []
+        prereqs_dict[cod].append({
+            "codigo": p.asignatura_requisito.codigo,
+            "nombre": p.asignatura_requisito.nombre,
+        })
+
+    # Todas las asignaturas de la malla del estudiante
+    asignaturas = asignatura.objects.filter(malla=est.malla).order_by('ciclo', 'codigo')
+
+    malla = []
+    for asig in asignaturas:
+        reqs = prereqs_dict.get(asig.codigo, [])
+        faltantes = [r for r in reqs if r["codigo"] not in aprobados_map]
+
+        if asig.codigo in aprobados_map:
+            hist_item = aprobados_map[asig.codigo]
+            estado = 'aprobado'
+            nota = hist_item.nota
+            periodo = hist_item.id_periodo.nombre
+        elif asig.codigo in selecciones_activas:
+            estado = 'matriculado'
+            nota = None
+            periodo = None
+        elif len(faltantes) == 0:
+            estado = 'habilitado'
+            nota = None
+            periodo = None
+        else:
+            estado = 'bloqueado'
+            nota = None
+            periodo = None
+
+        malla.append({
+            "codigo": asig.codigo,
+            "nombre": asig.nombre,
+            "creditos": asig.creditos,
+            "horas_teoria": asig.horas_teoria,
+            "horas_practica": asig.horas_practica,
+            "ciclo": asig.ciclo,
+            "estado": estado,
+            "nota": nota,
+            "periodo_aprobado": periodo,
+            "prerrequisitos": reqs,
+            "prerrequisitos_faltantes": faltantes,
+        })
+
+    return malla
+
+
+def obtener_oferta_habilitada_estudiante(estudiante_id, periodo_id):
+    """
+    Retorna la oferta del horario general para el periodo dado, clasificando cada grupo:
+    - habilitado_para_matricula: cumple todos los prerrequisitos y NO la tiene aprobada previamente.
+    - incluye detalle de prerrequisitos aprobados/faltantes y estado del estudiante frente al curso.
+    """
+    try:
+        est = estudiante.objects.get(pk=estudiante_id)
+    except estudiante.DoesNotExist:
+        raise ValidationError({"estudiante": "El estudiante especificado no existe."})
+
+    # Cursos aprobados
+    aprobados_map = {
+        ha.id_asignatura_id: ha.nota
+        for ha in HistorialAcademico.objects.filter(id_estudiante=est, estado='aprobado')
+    }
+
+    # Selecciones activas
+    selecciones_activas = set(
+        seleccion.objects.filter(
+            id_estudiante=est,
+            id_periodo_id=periodo_id,
+            estado__in=['pendiente', 'confirmada']
+        ).values_list('id_asignatura_id', flat=True)
+    )
+
+    # Prerrequisitos de la malla
+    prereqs_dict = {}
+    for p in Prerequisitos.objects.all().select_related('asignatura_requisito'):
+        cod = p.asignatura_codigo_id
+        if cod not in prereqs_dict:
+            prereqs_dict[cod] = []
+        prereqs_dict[cod].append({
+            "codigo": p.asignatura_requisito.codigo,
+            "nombre": p.asignatura_requisito.nombre,
+        })
+
+    oferta_general = obtener_horario_general(periodo_id=periodo_id)
+    oferta_general = [item for item in oferta_general if item.get("malla") == est.malla]
+
+    oferta_evaluada = []
+    for item in oferta_general:
+        cod = item["codigo_asignatura"]
+        reqs = prereqs_dict.get(cod, [])
+
+        faltantes = [r for r in reqs if r["codigo"] not in aprobados_map]
+        cumplidos = [
+            {**r, "nota": aprobados_map[r["codigo"]]}
+            for r in reqs if r["codigo"] in aprobados_map
+        ]
+
+        ya_aprobado = cod in aprobados_map
+        matriculado = cod in selecciones_activas
+        cumple_prerrequisitos = len(faltantes) == 0
+        habilitado_para_matricula = cumple_prerrequisitos and not ya_aprobado
+
+        oferta_evaluada.append({
+            **item,
+            "cumple_prerrequisitos": cumple_prerrequisitos,
+            "habilitado_para_matricula": habilitado_para_matricula,
+            "ya_aprobado": ya_aprobado,
+            "nota_aprobada": aprobados_map.get(cod),
+            "matriculado_activo": matriculado,
+            "prerrequisitos_requeridos": reqs,
+            "prerrequisitos_cumplidos": cumplidos,
+            "prerrequisitos_faltantes": faltantes,
+        })
+
+    return oferta_evaluada

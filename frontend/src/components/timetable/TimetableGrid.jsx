@@ -50,7 +50,7 @@ function getSlotDuration(horaIni, horaFin) {
   return Math.max(1, Math.round(totalMin / 50));
 }
 
-export default function TimetableGrid({ blocks = [] }) {
+export default function TimetableGrid({ blocks = [], onBlockClick }) {
   const blockGrid = {};
 
   blocks.forEach((b) => {
@@ -87,10 +87,13 @@ export default function TimetableGrid({ blocks = [] }) {
                   {block && (
                     <div
                       className="timetable-card"
+                      onClick={() => onBlockClick && onBlockClick(block)}
+                      title={onBlockClick ? 'Clic para editar o eliminar este bloque' : undefined}
                       style={{
                         background: getCourseColor(block.codigo_asignatura).bg,
                         borderLeftColor: getCourseColor(block.codigo_asignatura).border,
                         height: `calc(${block.duration * 48}px - 4px)`,
+                        cursor: onBlockClick ? 'pointer' : 'default',
                       }}
                     >
                       <div>

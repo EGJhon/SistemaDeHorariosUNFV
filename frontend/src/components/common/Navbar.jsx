@@ -43,7 +43,7 @@ export default function Navbar() {
         <div className="navbar-logo-badge">UNFV</div>
         <div>
           <h1 className="navbar-title">Sistema de Horarios EPIS</h1>
-          <div className="navbar-subtitle">Escuela Profesional de Ingeniería de Sistemas — Periodo 2026-2</div>
+          <div className="navbar-subtitle">Escuela Profesional de Ingeniería de Sistemas — Semestres Académicos 2026</div>
         </div>
       </div>
 

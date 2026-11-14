@@ -44,9 +44,22 @@ class AsignaturaSerializer(serializers.ModelSerializer):
 
 
 class DocenteSerializer(serializers.ModelSerializer):
+    horas_dictado = serializers.SerializerMethodField()
+    bloques_count = serializers.SerializerMethodField()
+
     class Meta:
         model = docente
-        fields = '__all__'
+        fields = ['id', 'nombre', 'email', 'usuario', 'horas_dictado', 'bloques_count']
+
+    def get_horas_dictado(self, obj):
+        total_minutos = 0
+        for b in obj.bloques.all():
+            m = (b.hora_fin.hour * 60 + b.hora_fin.minute) - (b.hora_inicio.hour * 60 + b.hora_inicio.minute)
+            total_minutos += m
+        return round(total_minutos / 50)
+
+    def get_bloques_count(self, obj):
+        return obj.bloques.count()
 
 
 class AulaSerializer(serializers.ModelSerializer):
@@ -57,6 +70,8 @@ class AulaSerializer(serializers.ModelSerializer):
 
 class GrupoSerializer(serializers.ModelSerializer):
     asignatura_nombre = serializers.ReadOnlyField(source='codigo.nombre')
+    asignatura_malla = serializers.ReadOnlyField(source='codigo.malla')
+    asignatura_ciclo = serializers.ReadOnlyField(source='codigo.ciclo')
     periodo_nombre = serializers.ReadOnlyField(source='id_periodo.nombre')
 
     class Meta:
@@ -68,13 +83,27 @@ class BloqueHorarioCreateSerializer(serializers.ModelSerializer):
     """
     Serializer para creación de bloque_horario por Consejo de Facultad.
     id_docente queda excluido del payload de entrada.
+    `malla` permite validar que el grupo pertenezca al plan de estudios activo.
     """
     id_grupo = serializers.PrimaryKeyRelatedField(queryset=grupo.objects.all())
     id_aula = serializers.PrimaryKeyRelatedField(queryset=aula.objects.all())
+    malla = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
 
     class Meta:
         model = bloque_horario
-        fields = ['id', 'dia_semana', 'hora_inicio', 'hora_fin', 'id_grupo', 'id_aula']
+        fields = ['id', 'dia_semana', 'hora_inicio', 'hora_fin', 'id_grupo', 'id_aula', 'malla']
+
+    def validate(self, attrs):
+        malla = attrs.get('malla')
+        grupo_obj = attrs.get('id_grupo')
+        if malla and grupo_obj and grupo_obj.codigo.malla != malla:
+            raise serializers.ValidationError({
+                'id_grupo': (
+                    f"El grupo seleccionado pertenece a la malla {grupo_obj.codigo.malla}, "
+                    f"no a la malla {malla}."
+                )
+            })
+        return attrs
 
 
 class BloqueHorarioSerializer(serializers.ModelSerializer):
@@ -85,6 +114,15 @@ class BloqueHorarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = bloque_horario
         fields = '__all__'
+
+
+class BloqueHorarioUpdateSerializer(serializers.Serializer):
+    dia_semana = serializers.CharField(required=False, max_length=15)
+    hora_inicio = serializers.TimeField(required=False)
+    hora_fin = serializers.TimeField(required=False)
+    id_aula = serializers.IntegerField(required=False)
+    id_docente = serializers.IntegerField(required=False, allow_null=True)
+    desasignar_docente = serializers.BooleanField(required=False, default=False)
 
 
 class AsignarDocenteSerializer(serializers.Serializer):
@@ -118,9 +156,27 @@ class PrerequisitosSerializer(serializers.ModelSerializer):
 
 
 class HistorialAcademicoSerializer(serializers.ModelSerializer):
+    asignatura_codigo = serializers.ReadOnlyField(source='id_asignatura.codigo')
+    asignatura_nombre = serializers.ReadOnlyField(source='id_asignatura.nombre')
+    asignatura_ciclo = serializers.ReadOnlyField(source='id_asignatura.ciclo')
+    asignatura_creditos = serializers.ReadOnlyField(source='id_asignatura.creditos')
+    periodo_nombre = serializers.ReadOnlyField(source='id_periodo.nombre')
+
     class Meta:
         model = HistorialAcademico
-        fields = '__all__'
+        fields = [
+            'id',
+            'nota',
+            'estado',
+            'id_estudiante',
+            'id_asignatura',
+            'asignatura_codigo',
+            'asignatura_nombre',
+            'asignatura_ciclo',
+            'asignatura_creditos',
+            'id_periodo',
+            'periodo_nombre',
+        ]
 
 
 class SolicitudAmpliacionSerializer(serializers.ModelSerializer):
@@ -140,11 +196,13 @@ class UsuarioListSerializer(serializers.ModelSerializer):
     rol_display = serializers.SerializerMethodField()
     codigo_universitario = serializers.SerializerMethodField()
     ciclo_actual = serializers.SerializerMethodField()
+    malla = serializers.SerializerMethodField()
     nombres_completos = serializers.SerializerMethodField()
+    horas_dictado = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'nombres_completos', 'rol', 'rol_display', 'codigo_universitario', 'ciclo_actual', 'date_joined']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'nombres_completos', 'rol', 'rol_display', 'codigo_universitario', 'ciclo_actual', 'malla', 'horas_dictado', 'date_joined']
 
     def get_rol(self, obj):
         perfil = getattr(obj, 'perfil', None)
@@ -162,6 +220,10 @@ class UsuarioListSerializer(serializers.ModelSerializer):
         est = getattr(obj, 'estudiante_profile', None)
         return est.ciclo_actual if est else None
 
+    def get_malla(self, obj):
+        est = getattr(obj, 'estudiante_profile', None)
+        return est.malla if est else None
+
     def get_nombres_completos(self, obj):
         full = obj.get_full_name().strip()
         if full:
@@ -174,6 +236,16 @@ class UsuarioListSerializer(serializers.ModelSerializer):
             return doc.nombre
         return obj.username
 
+    def get_horas_dictado(self, obj):
+        doc = getattr(obj, 'docente_profile', None)
+        if not doc:
+            return None
+        total_minutos = 0
+        for b in doc.bloques.all():
+            m = (b.hora_fin.hour * 60 + b.hora_fin.minute) - (b.hora_inicio.hour * 60 + b.hora_inicio.minute)
+            total_minutos += m
+        return round(total_minutos / 50)
+
 
 class UsuarioCreateSerializer(serializers.Serializer):
     username = serializers.CharField(required=True)
@@ -184,5 +256,6 @@ class UsuarioCreateSerializer(serializers.Serializer):
     rol = serializers.ChoiceField(choices=['ADMIN', 'DOCENTE', 'ESTUDIANTE'], default='ESTUDIANTE')
     codigo_universitario = serializers.CharField(required=False, allow_blank=True, default='')
     ciclo_actual = serializers.CharField(required=False, allow_blank=True, default='I')
+    malla = serializers.CharField(required=False, allow_blank=True, default='2021')
 
 

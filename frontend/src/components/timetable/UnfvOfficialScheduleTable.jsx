@@ -1,9 +1,15 @@
 import React from 'react';
-import { UserCheck, PlusCircle } from 'lucide-react';
+import { UserCheck, PlusCircle, Edit3 } from 'lucide-react';
 
 const DAYS = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
 
-export default function UnfvOfficialScheduleTable({ horarioGeneral = [], onAssignDocente }) {
+export default function UnfvOfficialScheduleTable({
+  horarioGeneral = [],
+  onAssignDocente,
+  onEditBloque,
+  periodoNombre = '2026-2',
+  mallaNombre = '',
+}) {
   // Group and sort items by Cycle (I-X) and Section (A, B, C)
   const cycleOrder = { 'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10 };
   const sectionOrder = { 'A': 1, 'B': 2, 'C': 3 };
@@ -56,7 +62,8 @@ export default function UnfvOfficialScheduleTable({ horarioGeneral = [], onAssig
           Facultad de Ingeniería Industrial y de Sistemas — EPIS
         </h3>
         <div style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>
-          HORARIO ACADÉMICO OFICIAL — PERIODO 2026-2
+          HORARIO ACADÉMICO OFICIAL — PERIODO {periodoNombre || '2026-2'}
+          {mallaNombre ? ` — MALLA ${mallaNombre}` : ''}
         </div>
       </div>
 
@@ -97,13 +104,14 @@ export default function UnfvOfficialScheduleTable({ horarioGeneral = [], onAssig
                 </th>
               ))}
               <th style={{ padding: '0.6rem 0.5rem', borderRight: '1px solid var(--border-color)', textAlign: 'left', minWidth: '150px' }}>Docente</th>
-              <th style={{ padding: '0.6rem 0.4rem', minWidth: '70px' }}>Aulas</th>
+              <th style={{ padding: '0.6rem 0.4rem', borderRight: '1px solid var(--border-color)', minWidth: '70px' }}>Aulas</th>
+              <th style={{ padding: '0.6rem 0.4rem', minWidth: '95px' }}>Gestión</th>
             </tr>
           </thead>
           <tbody>
             {sortedItems.length === 0 ? (
               <tr>
-                <td colSpan={17} style={{ padding: '2rem', color: 'var(--text-muted)' }}>
+                <td colSpan={18} style={{ padding: '2rem', color: 'var(--text-muted)' }}>
                   No hay asignaturas registradas para este filtro.
                 </td>
               </tr>
@@ -193,7 +201,21 @@ export default function UnfvOfficialScheduleTable({ horarioGeneral = [], onAssig
                           }}
                         >
                           {dayBlocks.map((b) => (
-                            <div key={b.id_bloque} style={{ fontWeight: 600, margin: '2px 0' }}>
+                            <div
+                              key={b.id_bloque}
+                              onClick={() => onEditBloque && onEditBloque({ ...b, ...item })}
+                              title={onEditBloque ? 'Clic para editar o eliminar este bloque' : undefined}
+                              style={{
+                                fontWeight: 600,
+                                margin: '2px 0',
+                                padding: '2px 4px',
+                                borderRadius: '4px',
+                                cursor: onEditBloque ? 'pointer' : 'default',
+                                backgroundColor: onEditBloque ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
+                                border: onEditBloque ? '1px dashed rgba(56, 189, 248, 0.3)' : 'none',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
                               {b.hora_inicio} - {b.hora_fin}
                             </div>
                           ))}
@@ -228,8 +250,34 @@ export default function UnfvOfficialScheduleTable({ horarioGeneral = [], onAssig
                     </td>
 
                     {/* Aulas Column */}
-                    <td style={{ padding: '0.55rem 0.4rem', fontWeight: 700, color: 'var(--primary-light)' }}>
+                    <td style={{ padding: '0.55rem 0.4rem', borderRight: '1px solid var(--border-color)', fontWeight: 700, color: 'var(--primary-light)' }}>
                       {aulasList || 'A3-1'}
+                    </td>
+
+                    {/* Acciones de Modificación / Gestión Column */}
+                    <td style={{ padding: '0.4rem 0.3rem', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
+                        {item.bloques.map((b) => (
+                          <button
+                            key={b.id_bloque}
+                            className="btn btn-secondary"
+                            style={{
+                              padding: '0.2rem 0.45rem',
+                              fontSize: '0.68rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              width: '100%',
+                              justifyContent: 'center',
+                            }}
+                            onClick={() => onEditBloque && onEditBloque({ ...b, ...item })}
+                            title="Modificar horario, aula o docente de este bloque"
+                          >
+                            <Edit3 size={11} />
+                            <span>{b.dia_semana.substring(0, 3)} {b.hora_inicio}</span>
+                          </button>
+                        ))}
+                      </div>
                     </td>
                   </tr>
                 );

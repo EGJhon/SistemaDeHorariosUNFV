@@ -7,6 +7,16 @@ export async function request(endpoint, options = {}) {
     ...options.headers,
   };
 
+  const savedUser = localStorage.getItem('unfv_user');
+  if (savedUser) {
+    try {
+      const parsed = JSON.parse(savedUser);
+      if (parsed?.token) {
+        headers['Authorization'] = `Token ${parsed.token}`;
+      }
+    } catch (e) {}
+  }
+
   const response = await fetch(url, { ...options, headers });
   const data = await response.json().catch(() => ({}));
 
@@ -30,16 +40,21 @@ export const api = {
     }),
 
   getPeriodos: () => request('/periodos/'),
-  getAsignaturas: () => request('/asignaturas/'),
+  getMallas: () => request('/asignaturas/mallas/'),
+  getAsignaturas: (malla = '') =>
+    request(`/asignaturas/${malla ? `?malla=${encodeURIComponent(malla)}` : ''}`),
   getGrupos: () => request('/grupos/'),
   getDocentes: () => request('/docentes/'),
+  getCargaDocente: (docenteId, periodoId = '') =>
+    request(`/docentes/${docenteId}/carga-lectiva/${periodoId ? `?periodo=${periodoId}` : ''}`),
   getAulas: () => request('/aulas/'),
   getEstudiantes: () => request('/estudiantes/'),
   getSelecciones: () => request('/selecciones/'),
   
-  getHorarioGeneral: (periodoId, ciclo = '') => {
+  getHorarioGeneral: (periodoId, ciclo = '', malla = '') => {
     let query = `/horario-general/?periodo=${periodoId}`;
     if (ciclo) query += `&ciclo=${encodeURIComponent(ciclo)}`;
+    if (malla) query += `&malla=${encodeURIComponent(malla)}`;
     return request(query);
   },
 
@@ -65,6 +80,26 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ id_docente }),
     }),
+
+  actualizarBloqueHorario: (bloqueId, data) =>
+    request(`/bloques-horario/${bloqueId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  eliminarBloqueHorario: (bloqueId) =>
+    request(`/bloques-horario/${bloqueId}/`, {
+      method: 'DELETE',
+    }),
+
+  getHistorialEstudiante: (estudianteId) =>
+    request(`/estudiantes/${estudianteId}/historial/`),
+
+  getMallaCurricularEstudiante: (estudianteId) =>
+    request(`/estudiantes/${estudianteId}/malla-curricular/`),
+
+  getOfertaHabilitadaEstudiante: (estudianteId, periodoId) =>
+    request(`/estudiantes/${estudianteId}/oferta-habilitada/?periodo=${periodoId}`),
 
   getUsuarios: () => request('/usuarios/'),
 
