@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Search, Shield, GraduationCap, UserCheck, RefreshCw, Mail, Hash, Calendar } from 'lucide-react';
+import { Users, UserPlus, Search, Shield, GraduationCap, UserCheck, RefreshCw, Mail, Hash, Calendar, Pencil } from 'lucide-react';
 import { api } from '../api';
 import CrearUsuarioModal from './modals/CrearUsuarioModal';
+import EditarUsuarioModal from './modals/EditarUsuarioModal';
 
 export default function GestionUsuariosView() {
   const [usuarios, setUsuarios] = useState([]);
@@ -10,6 +11,7 @@ export default function GestionUsuariosView() {
   const [search, setSearch] = useState('');
   const [selectedRol, setSelectedRol] = useState('TODOS');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [usuarioEditando, setUsuarioEditando] = useState(null);
 
   const cargarUsuarios = async () => {
     setLoading(true);
@@ -195,6 +197,7 @@ export default function GestionUsuariosView() {
                   <th>Correo Electrónico</th>
                   <th>Detalles Institucionales</th>
                   <th>Fecha de Registro</th>
+                  <th style={{ textAlign: 'center' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -260,6 +263,18 @@ export default function GestionUsuariosView() {
                         {u.date_joined ? new Date(u.date_joined).toLocaleDateString('es-PE', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Reciente'}
                       </div>
                     </td>
+
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                        onClick={() => setUsuarioEditando(u)}
+                        title={`Editar a ${u.nombres_completos || u.username}`}
+                      >
+                        <Pencil size={14} />
+                        Editar
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -270,6 +285,15 @@ export default function GestionUsuariosView() {
 
       {/* Create User Modal */}
       {isModalOpen && <CrearUsuarioModal onClose={() => setIsModalOpen(false)} onSuccess={cargarUsuarios} />}
+
+      {/* Edit User Modal */}
+      {usuarioEditando && (
+        <EditarUsuarioModal
+          usuario={usuarioEditando}
+          onClose={() => setUsuarioEditando(null)}
+          onSuccess={cargarUsuarios}
+        />
+      )}
     </div>
   );
 }

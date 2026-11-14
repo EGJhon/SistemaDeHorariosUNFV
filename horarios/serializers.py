@@ -259,3 +259,19 @@ class UsuarioCreateSerializer(serializers.Serializer):
     malla = serializers.CharField(required=False, allow_blank=True, default='2021')
 
 
+class UsuarioUpdateSerializer(serializers.Serializer):
+    """
+    Serializer para edición administrativa de usuarios.
+    Todos los campos son opcionales; la contraseña solo se actualiza si se envía.
+    """
+    username = serializers.CharField(required=False)
+    password = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    rol = serializers.ChoiceField(choices=['ADMIN', 'DOCENTE', 'ESTUDIANTE'], required=False)
+    codigo_universitario = serializers.CharField(required=False, allow_blank=True)
+    ciclo_actual = serializers.CharField(required=False, allow_blank=True)
+    malla = serializers.CharField(required=False, allow_blank=True)
+
+

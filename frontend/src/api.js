@@ -108,4 +108,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  actualizarUsuario: (usuarioId, data) =>
+    request(`/usuarios/${usuarioId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
 };

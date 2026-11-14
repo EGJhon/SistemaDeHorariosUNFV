@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
 from .models import (
@@ -36,6 +37,7 @@ from .serializers import (
     HistorialAcademicoSerializer,
     UsuarioListSerializer,
     UsuarioCreateSerializer,
+    UsuarioUpdateSerializer,
 )
 from .services import (
     crear_seleccion,
@@ -460,5 +462,134 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
         output_serializer = UsuarioListSerializer(user)
         return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        request=UsuarioUpdateSerializer,
+        responses={200: UsuarioListSerializer, 400: OpenApiTypes.OBJECT},
+        summary="Editar usuario, rol y perfil asociado",
+        description=(
+            "Actualiza los datos de un usuario existente. Si cambia el rol, sincroniza su "
+            "PerfilUsuario y crea/actualiza/desvincula el perfil de estudiante o docente."
+        ),
+    )
+    def update(self, request, *args, **kwargs):
+        user = self.get_object()
+        serializer = UsuarioUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        username = (data.get('username') or user.username).strip()
+        if not username:
+            return Response(
+                {"error": "El nombre de usuario no puede estar vacío."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if User.objects.filter(username=username).exclude(pk=user.pk).exists():
+            return Response(
+                {"error": f"El nombre de usuario '{username}' ya está registrado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        email = data.get('email', user.email) or ''
+        first_name = data.get('first_name', user.first_name) or ''
+        last_name = data.get('last_name', user.last_name) or ''
+        rol_final = data.get('rol') or getattr(getattr(user, 'perfil', None), 'rol', None) or (
+            'ADMIN' if user.is_superuser else 'ESTUDIANTE'
+        )
+        codigo_uni = (data.get('codigo_universitario') or '').strip() or username
+        ciclo = data.get('ciclo_actual') or 'I'
+        malla = data.get('malla') or '2021'
+        nombres_completos = f"{first_name} {last_name}".strip() or username
+
+        # Validaciones previas (fuera de la transacción para no guardar cambios parciales)
+        est = estudiante.objects.filter(usuario=user).first()
+        if rol_final == 'ESTUDIANTE':
+            if est is None:
+                est = estudiante.objects.filter(
+                    codigo_universitario=codigo_uni, usuario__isnull=True
+                ).first()
+            conflicto = estudiante.objects.filter(codigo_universitario=codigo_uni)
+            if est is not None:
+                conflicto = conflicto.exclude(pk=est.pk)
+            if conflicto.exists():
+                return Response(
+                    {
+                        "error": (
+                            f"El código universitario '{codigo_uni}' ya está asignado "
+                            "a otro estudiante."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        doc = docente.objects.filter(usuario=user).first()
+        doc_email = email or f"{username}@unfv.edu.pe"
+        if rol_final == 'DOCENTE':
+            conflicto = docente.objects.filter(email=doc_email).exclude(usuario=user)
+            if doc is not None:
+                conflicto = conflicto.exclude(pk=doc.pk)
+            if conflicto.exists():
+                return Response(
+                    {
+                        "error": (
+                            f"El correo '{doc_email}' ya está asignado a otro docente."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if doc is None:
+                # Reutiliza un docente sin usuario con ese correo
+                doc = docente.objects.filter(
+                    email=doc_email, usuario__isnull=True
+                ).first()
+
+        with transaction.atomic():
+            user.username = username
+            user.email = email
+            user.first_name = first_name
+            user.last_name = last_name
+            user.is_staff = rol_final == 'ADMIN'
+            user.is_superuser = rol_final == 'ADMIN'
+            password = data.get('password')
+            if password:
+                user.set_password(password)
+            user.save()
+
+            # Perfil genérico con el rol
+            perfil, _ = PerfilUsuario.objects.get_or_create(
+                user=user, defaults={'rol': rol_final}
+            )
+            if perfil.rol != rol_final:
+                perfil.rol = rol_final
+                perfil.save(update_fields=['rol'])
+
+            # Perfil de estudiante
+            if rol_final == 'ESTUDIANTE':
+                if est is None:
+                    est = estudiante(usuario=user)
+                est.codigo_universitario = codigo_uni
+                est.nombres = nombres_completos
+                est.ciclo_actual = ciclo
+                est.malla = malla
+                est.usuario = user
+                est.save()
+            elif est is not None:
+                est.usuario = None
+                est.save(update_fields=['usuario'])
+
+            # Perfil de docente
+            if rol_final == 'DOCENTE':
+                if doc is None:
+                    doc = docente(usuario=user)
+                doc.nombre = nombres_completos
+                doc.email = doc_email
+                doc.usuario = user
+                doc.save()
+            elif doc is not None:
+                doc.usuario = None
+                doc.save(update_fields=['usuario'])
+
+        output_serializer = UsuarioListSerializer(user)
+        return Response(output_serializer.data, status=status.HTTP_200_OK)
 
 

@@ -667,3 +667,130 @@ def test_concurrencia_estudiante_cruce_horario(base_data):
     assert len(results) == 1
     assert len(errors) == 1
     assert isinstance(errors[0], ValidationError)
+
+
+# ============================================================================
+# GESTIÓN ADMINISTRATIVA DE USUARIOS: edición
+# ============================================================================
+@pytest.mark.django_db
+def test_admin_puede_editar_datos_de_estudiante(client):
+    from django.contrib.auth.models import User
+    from horarios.models import PerfilUsuario
+
+    user = User.objects.create_user(
+        username="2021009999",
+        password="inicial123",
+        first_name="Nombre",
+        last_name="Antiguo",
+        email="antiguo@unfv.edu.pe",
+    )
+    PerfilUsuario.objects.create(user=user, rol="ESTUDIANTE")
+    est = estudiante.objects.create(
+        codigo_universitario="2021009999",
+        nombres="Nombre Antiguo",
+        ciclo_actual="I",
+        malla="2021",
+        usuario=user,
+    )
+
+    url = reverse('usuario-detail', kwargs={'pk': user.id})
+    res = client.patch(
+        url,
+        {
+            "username": "2021009999",
+            "first_name": "Nombre",
+            "last_name": "Actualizado",
+            "email": "actualizado@unfv.edu.pe",
+            "rol": "ESTUDIANTE",
+            "codigo_universitario": "2021009999",
+            "ciclo_actual": "V",
+            "malla": "2019",
+        },
+        format='json',
+    )
+    assert res.status_code == status.HTTP_200_OK
+
+    user.refresh_from_db()
+    est.refresh_from_db()
+    assert user.last_name == "Actualizado"
+    assert user.email == "actualizado@unfv.edu.pe"
+    assert est.nombres == "Nombre Actualizado"
+    assert est.ciclo_actual == "V"
+    assert est.malla == "2019"
+
+
+@pytest.mark.django_db
+def test_admin_cambia_rol_y_sincroniza_perfiles(client):
+    from django.contrib.auth.models import User
+    from horarios.models import PerfilUsuario
+
+    user = User.objects.create_user(
+        username="2021008888",
+        password="inicial123",
+        first_name="Ana",
+        last_name="Torres",
+        email="ana@unfv.edu.pe",
+    )
+    PerfilUsuario.objects.create(user=user, rol="ESTUDIANTE")
+    est = estudiante.objects.create(
+        codigo_universitario="2021008888",
+        nombres="Ana Torres",
+        ciclo_actual="II",
+        malla="2021",
+        usuario=user,
+    )
+
+    url = reverse('usuario-detail', kwargs={'pk': user.id})
+    res = client.patch(
+        url,
+        {
+            "rol": "DOCENTE",
+            "email": "ana.docente@unfv.edu.pe",
+            "first_name": "Ana",
+            "last_name": "Torres",
+        },
+        format='json',
+    )
+    assert res.status_code == status.HTTP_200_OK
+
+    user.refresh_from_db()
+    est.refresh_from_db()
+    perfil = PerfilUsuario.objects.get(user=user)
+    doc = docente.objects.get(usuario=user)
+
+    assert perfil.rol == "DOCENTE"
+    assert est.usuario is None
+    assert doc.nombre == "Ana Torres"
+    assert doc.email == "ana.docente@unfv.edu.pe"
+    assert user.is_staff is False
+
+
+@pytest.mark.django_db
+def test_admin_no_puede_duplicar_username_ni_codigo(client, base_data):
+    from django.contrib.auth.models import User
+    from horarios.models import PerfilUsuario
+
+    user = User.objects.create_user(username="2021007777", password="x12345678")
+    PerfilUsuario.objects.create(user=user, rol="ESTUDIANTE")
+    estudiante.objects.create(
+        codigo_universitario="2021007777",
+        nombres="Usuario Prueba",
+        ciclo_actual="I",
+        malla="2021",
+        usuario=user,
+    )
+
+    url = reverse('usuario-detail', kwargs={'pk': user.id})
+
+    # Código universitario ya usado por est1 de la fixture
+    res_codigo = client.patch(
+        url,
+        {"codigo_universitario": base_data["est1"].codigo_universitario},
+        format='json',
+    )
+    assert res_codigo.status_code == status.HTTP_400_BAD_REQUEST
+
+    # Username ya existente
+    otro = User.objects.create_user(username="existente", password="x12345678")
+    res_username = client.patch(url, {"username": otro.username}, format='json')
+    assert res_username.status_code == status.HTTP_400_BAD_REQUEST
