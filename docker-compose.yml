@@ -47,6 +47,7 @@ services:
       - "5173:5173"
     environment:
       - VITE_API_URL=http://web:8001
+      - VITE_ALLOWED_HOSTS=sistemasunfv.jegsistemas.work,.jegsistemas.work
     depends_on:
       - web
 
